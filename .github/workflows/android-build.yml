@@ -40,7 +40,9 @@ jobs:
           echo "sdk.dir=$SDK" > local.properties
 
       - name: Build APK (debug, installable)
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Rename APK with version
         run: |
