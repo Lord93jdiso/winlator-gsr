@@ -9,6 +9,7 @@ on:
 
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
 jobs:
   build:
@@ -23,11 +24,20 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install SDK components (platform, build-tools, NDK 24, CMake 3.22.1)
+      - name: Install Android cmdline-tools + SDK components (platform, build-tools, NDK 24, CMake 3.22.1)
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;24.0.8215888" "cmake;3.22.1"
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          set -e
+          SDK="/usr/local/lib/android/sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          cd /tmp
+          curl -sSL -o clt.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q -o clt.zip -d "$SDK/cmdline-tools"
+          rm -rf "$SDK/cmdline-tools/latest"
+          mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;24.0.8215888" "cmake;3.22.1" > /dev/null
+          echo "sdk.dir=$SDK" > local.properties
 
       - name: Build APK (debug, installable)
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
