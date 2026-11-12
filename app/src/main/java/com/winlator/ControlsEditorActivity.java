@@ -292,8 +292,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         // ----- Custom button image (user-supplied skin for this element) -----
         view.findViewById(R.id.BTChooseCustomImage).setOnClickListener((v) -> {
             elementForImagePick = element;
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
             intent.setType("image/*");
             startActivityForResult(intent, PICK_CUSTOM_IMAGE_REQUEST_CODE);
         });

@@ -111,10 +111,10 @@ public abstract class CustomDriverManager {
             // the library must live in usr/lib inside the rootfs
             File libDir = new File(stagingDir, "usr/lib");
             libDir.mkdirs();
-            FileUtils.moveFile(new File(stagingDir, "libvulkan_freedreno.so"), new File(libDir, "libvulkan_freedreno.so"));
+            moveFile(new File(stagingDir, "libvulkan_freedreno.so"), new File(libDir, "libvulkan_freedreno.so"));
             File extraLib = new File(stagingDir, libraryName);
             if (extraLib.isFile() && !libraryName.equals("libvulkan_freedreno.so")) {
-                FileUtils.moveFile(extraLib, new File(libDir, libraryName));
+                moveFile(extraLib, new File(libDir, libraryName));
             }
 
             String name = StringUtils.parseIdentifier(requestedName != null && !requestedName.isEmpty() ? requestedName : "custom");
@@ -122,10 +122,10 @@ public abstract class CustomDriverManager {
             File destination = new File(getTurnipComponentDir(context), "turnip-"+name+".tzst");
             if (destination.isFile()) destination.delete();
 
-            boolean compressed = TarCompressorUtils.compress(TarCompressorUtils.Type.ZSTD, stagingDir, destination, MainActivity.CONTAINER_PATTERN_COMPRESSION_LEVEL);
+            TarCompressorUtils.compress(TarCompressorUtils.Type.ZSTD, stagingDir, destination, MainActivity.CONTAINER_PATTERN_COMPRESSION_LEVEL);
             FileUtils.delete(tempDir);
             FileUtils.delete(stagingDir);
-            return compressed && destination.isFile();
+            return destination.isFile() && destination.length() > 0;
         }
         catch (Exception e) {
             FileUtils.delete(tempDir);
