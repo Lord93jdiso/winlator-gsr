@@ -34,6 +34,15 @@ android {
             path 'src/main/cpp/CMakeLists.txt'
         }
     }
+
+    packagingOptions {
+        jniLibs {
+            // midihandler's CMakeLists re-imports the jniLibs prebuilts, so the
+            // same .so files land in both jniLibs and the cxx obj dir. The copies
+            // are identical, so keep the first one of each.
+            pickFirsts += ['**/*.so']
+        }
+    }
 }
 
 dependencies {
