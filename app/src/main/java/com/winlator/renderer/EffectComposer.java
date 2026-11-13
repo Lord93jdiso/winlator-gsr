@@ -139,18 +139,11 @@ public class EffectComposer {
 
         float srcWidth = Math.max(gsrScreenWidth, 1);
         float srcHeight = Math.max(gsrScreenHeight, 1);
-        int surfaceWidth = renderer.surfaceWidth;
-        int surfaceHeight = renderer.surfaceHeight;
 
-        // ViewTransformation maps the X screen into the display surface (letterboxing included).
-        ViewTransformation vt = gsrViewTransformation;
-        float uvScaleX = surfaceWidth / (float)Math.max(vt.viewWidth, 1);
-        float uvScaleY = surfaceHeight / (float)Math.max(vt.viewHeight, 1);
-        float uvOffsetX = vt.viewOffsetX / srcWidth;
-        float uvOffsetY = vt.viewOffsetY / srcHeight;
-
+        // The quad covers the current viewport (the letterboxed output region of
+        // the surface) and must sample the FULL source: UV spans [0, 1].
+        material.setUniformVec4(material.gsrUniforms.uvTransform, 1.0f, 1.0f, 0.0f, 0.0f);
         material.setUniformVec4(material.gsrUniforms.viewportInfo, 1.0f / srcWidth, 1.0f / srcHeight, srcWidth, srcHeight);
-        material.setUniformVec4(material.gsrUniforms.uvTransform, uvScaleX, uvScaleY, uvOffsetX, uvOffsetY);
 
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, inputTexture.getTextureId());
@@ -243,7 +236,25 @@ public class EffectComposer {
         if (renderer.surfaceWidth <= 0 || renderer.surfaceHeight <= 0) return;
         initBuffers();
 
+        // Frame generation owns the cursor: it is drawn fresh on top of the final
+        // frame every vsync, never blended between content states (no ghosting).
+        renderer.renderCursorInScene = !frameGenEnabled;
+
+        // Generated (interpolated) frame: content hasn't changed since the last
+        // presentation - reuse the stored composited frame, skip re-rendering.
+        if (frameGenEnabled && !contentDirty) {
+            frameAge += 1.0f;
+            presentBlendedFrame(1.0f / (frameAge + 1.0f)); // weight of prev fades as cur gets older
+            renderer.drawCursorOnScreen();
+            return;
+        }
+
         boolean useGSR = gsrEnabled;
+
+        // New content: preserve the PREVIOUS presented frame for blending BEFORE
+        // the scene re-render overwrites readBuffer (this is what makes generated
+        // frames real interpolations instead of exact duplicates).
+        if (frameGenEnabled && contentDirty) capturePreviousFrame();
 
         // -------- Source pass: composite X content --------
         if (useGSR) {
@@ -253,11 +264,17 @@ public class EffectComposer {
             renderer.viewportNeedsUpdate = true;
             renderer.drawFrame(gsrViewTransformation);
 
-            // Pass 2: Snapdragon GSR - upscale + sharpen into the first effect buffer.
+            // Pass 2: Snapdragon GSR - upscale + sharpen into the letterboxed
+            // output region of a surface-sized buffer (black bars stay black).
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, writeBuffer.getFramebuffer());
-            GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
-            renderer.viewportNeedsUpdate = true;
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+            GLES20.glViewport(
+                renderer.viewTransformation.viewOffsetX,
+                renderer.viewTransformation.viewOffsetY,
+                renderer.viewTransformation.viewWidth,
+                renderer.viewTransformation.viewHeight
+            );
+            renderer.viewportNeedsUpdate = true;
             try {
                 renderGSREffect(gsrBuffer);
             }
@@ -299,18 +316,12 @@ public class EffectComposer {
             first = false;
         }
 
-        // -------- Frame Generation presentation --------
+        // -------- Presentation --------
         if (frameGenEnabled) {
-            if (contentDirty) {
-                capturePreviousFrame();
-                contentDirty = false;
-                frameAge = 0.0f;
-                blitTexture(readBuffer, null);
-            }
-            else {
-                frameAge += 1.0f;
-                presentBlendedFrame(frameAge / (frameAge + 1.0f));
-            }
+            contentDirty = false;
+            frameAge = 0.0f;
+            blitTexture(readBuffer, null);
+            renderer.drawCursorOnScreen();
         }
         else if (useGSR && first) {
             // GSR was the only effect: present the upscaled image.

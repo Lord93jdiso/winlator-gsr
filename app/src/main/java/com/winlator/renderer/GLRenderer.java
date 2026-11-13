@@ -57,6 +57,12 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private boolean toggleFullscreen = false;
     protected boolean viewportNeedsUpdate = true;
     private boolean cursorVisible = true;
+    /**
+     * When false the cursor is NOT rendered into the composited scene buffers.
+     * Frame generation sets this to false so the cursor is drawn fresh on top
+     * of every presented frame instead of being blended between content states.
+     */
+    public volatile boolean renderCursorInScene = true;
     private float cursorScale = 1.0f;
     private int cursorBackColor = 0xffffff;
     private int cursorForeColor = 0x000000;
@@ -170,6 +176,17 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
+        computePointerPanXForm();
+
+        renderWindows();
+        if (cursorVisible && renderCursorInScene) renderCursor();
+    }
+
+    /**
+     * Computes the pointer-pan / magnifier transform (tmpXForm2) shared by the
+     * scene pass and the post-composer cursor draw.
+     */
+    private void computePointerPanXForm() {
         float pointerX = 0;
         float pointerY = 0;
         float magnifierZoom = !screenOffsetYRelativeToCursor ? this.magnifierZoom : 1.0f;
@@ -185,9 +202,25 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
 
         XForm.makeTransform(tmpXForm2, -pointerX, -pointerY, magnifierZoom, magnifierZoom, 0);
+    }
 
-        renderWindows();
-        if (cursorVisible) renderCursor();
+    /**
+     * Draws the cursor directly onto the default framebuffer after the composer
+     * presented the final image. Used when frame generation is active so the
+     * cursor is never baked into blended frames (no ghost/duplicate cursor).
+     */
+    public void drawCursorOnScreen() {
+        if (!cursorVisible) return;
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        GLES20.glViewport(
+            viewTransformation.viewOffsetX,
+            viewTransformation.viewOffsetY,
+            viewTransformation.viewWidth,
+            viewTransformation.viewHeight
+        );
+        viewportNeedsUpdate = true;
+        computePointerPanXForm();
+        renderCursor();
     }
 
     @Override
