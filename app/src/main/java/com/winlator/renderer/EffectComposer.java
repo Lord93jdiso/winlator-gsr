@@ -22,7 +22,7 @@ public class EffectComposer {
     private RenderTarget gsrBuffer = null;                 // guest-resolution buffer
     private final ViewTransformation gsrViewTransformation = new ViewTransformation();
     private final GSREffect gsrEffect = new GSREffect();
-    private boolean gsrEnabled = false;
+    private volatile boolean gsrEnabled = false;
     private short gsrScreenWidth = 0;
     private short gsrScreenHeight = 0;
 
@@ -30,8 +30,8 @@ public class EffectComposer {
     private RenderTarget prevFrameBuffer = null;           // previous composited frame (surface resolution)
     private final FrameBlendMaterial frameBlendMaterial = new FrameBlendMaterial();
     private final ScreenEffectPass screenEffectPass = new ScreenEffectPass();
-    private boolean frameGenEnabled = false;
-    private boolean contentDirty = true;
+    private volatile boolean frameGenEnabled = false;
+    private volatile boolean contentDirty = true;
     private float frameAge = 0.0f;
 
     private static class ScreenEffectPass extends Effect {
@@ -101,7 +101,12 @@ public class EffectComposer {
         return frameGenEnabled;
     }
 
-    public synchronized void markContentDirty() {
+    /**
+     * Called from the XServer request thread while it holds the XServer lock.
+     * MUST NOT block: no monitor acquisition here (render() on the GL thread
+     * waits for that same XServer lock). Volatile write only.
+     */
+    public void markContentDirty() {
         renderer.contentUpdateCount.incrementAndGet();
         contentDirty = true;
         if (frameGenEnabled) renderer.requestRender();
@@ -226,7 +231,15 @@ public class EffectComposer {
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
     }
 
-    public synchronized void render() {
+    /**
+     * Runs on the GL thread only. MUST NOT be synchronized: it internally waits
+     * for the XServer lock (renderWindows), and the XServer thread reaches
+     * markContentDirty() while holding that lock. A synchronized render() +
+     * synchronized markContentDirty() is an AB-BA deadlock (hard freeze as soon
+     * as GSR/FrameGen routes frames through the composer). All internal state
+     * below is touched only by the GL thread; cross-thread flags are volatile.
+     */
+    public void render() {
         if (renderer.surfaceWidth <= 0 || renderer.surfaceHeight <= 0) return;
         initBuffers();
 

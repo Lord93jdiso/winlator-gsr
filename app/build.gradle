@@ -7,8 +7,8 @@ android {
         applicationId 'com.winlator'
         minSdkVersion 26
         targetSdkVersion 28
-        versionCode 29
-        versionName "11.2-GSR"
+        versionCode 30
+        versionName "11.2-GSR-r2"
     }
 
     buildTypes {
